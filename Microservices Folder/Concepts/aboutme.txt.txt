@@ -31,7 +31,7 @@ Note :
 
 1. Auth Server --> API Gateway Authentication
 2. Synchronous---->Resilience4J
-3. Asynchronous ---- RabbitMQ,Kafka ---> Notification Service
+3. Asynchronous ---- RabbitMQ,Kafka(Message Queue) ---> Notification Service
 4. Eureka ---> Service Discovery.
 5. Config Server ---> Create bean for RestTemplate(@LoadBalanced)
 6. Vault --> Store Secrets
@@ -50,7 +50,7 @@ Note :
 3. create Product Entity with fields(id(String),name,description,price(BigDecimal)) add @Document(value="product") 
 instead of @Entity. Add @Id.
 4. Create ProductRepository which extends MongoRepository<Product,String>
-5. Create ProductController (/api/product). a)CreateProd(ProdRequest prodReq)   b)getAllProducts()  c)
+5. Create ProductController (/api/product). a)CreateProd(ProdRequest prodReq)   b)getAllProducts()  
 6. Create ProductRequest class in Dto Package with Fields - name,desc,price.
 7. Create ProductService class --> Product product=Product.builder().name(prodReq.getName()).desc().price().build();
      a.@RequiredArgsConstructor on Service class.
@@ -70,15 +70,17 @@ instead of @Entity. Add @Id.
    private ProductResponse mapToProductResponse(Product product){
        return ProductResponse.builder()
                              .id(product.getId())
-                             .name()
-                             .desc()
-                             .price()
+                             .name(....)
+                             .desc(....)
+                             .price(.....)
                              .build()
    }
 
 }
+
+
 ------------------------------------------------------------------------------------------------------------------------------------------------------
-                              Integration Testing for Microservices
+                      Automated Test -  Integration Testing for Microservices
                             -----------------------------------------
 
 10. Note :
@@ -133,9 +135,219 @@ instead of @Entity. Add @Id.
 
 14. Go To main/test/ProductServiceApplicationTests :
 
-     1. Add @TestContainers on class ProductServiceApplicationTests.saying Junit we are using TestContainers for Testing.
+     1. Add @TestContainers on class ProductServiceApplicationTests.saying To Junit5 we are using TestContainers for Testing.
      2. Define MongoDBContainer inside the test.You can't create NoArgsConstr.You need to specify Mongo Docker Image Version inside Constructor.
         
         @Container ---> Junit understands that this is MongoDB Container
        static MongoDBContainer mongoDBContainer=new MongoDBContainer("mongo:4.4.2");
      3. 
+
+
+
+
+       @SpringBootTest
+       @TestContainers
+       class ProductServiceApplicationTests{
+
+         @Container
+        static MongoDBContainer mongoDBContainer= new MongoDBContainer("mongo:4.4.2");
+
+        @DynamicPropertySource  --> Spring consider this.
+        static void setProperties(DynamicPropertyRegistry dymDyanamicPropertyRegistry){
+        
+        dymDyanamicPropertyRegistry.add("spring.data.mongodb.uri",mongoDBContainer::getReplicaSetUrl);  ----> Classpath of MongoDb like local DB.
+       }
+
+
+       }
+
+
+
+
+    4.Testcases:(Integration Testing - only Controller API'S - Two Controller Methods(createProduct(),getAllProducts())
+      -----------
+
+    a.Write test for createProduct() :
+
+       @SpringBootTest
+       @TestContainers
+       @AutoConfigureMockMvc
+       class ProductServiceApplicationTests{
+
+         @Container
+        static MongoDBContainer mongoDBContainer= new MongoDBContainer("mongo:4.4.2");
+
+        @DynamicPropertySource  --> Spring consider this.
+        static void setProperties(DynamicPropertyRegistry dymDyanamicPropertyRegistry){
+        
+        dymDyanamicPropertyRegistry.add("spring.data.mongodb.uri",mongoDBContainer::getReplicaSetUrl);  ----> Classpath of MongoDb like local DB.
+       }
+
+     //Continue in same class
+
+      
+       @Autowired
+       private MockMvc mockMvc;   ---> Getting Error - Could not Autowired,No Beans of MockMvc bean Found.---> @AutoConfigureMockMvc on class
+        @Autowired
+       private ObjectMapper objectMapper;  ---> Convert Pojo Obj to Json and Viceversa.
+         @Autowired
+        private ProductRepository productRepository;
+
+    
+       @Test
+       void shouldCreateProduct(){
+        
+        ProductRequest productRequest=getProductRequest();
+       String productRequestString = objectMapper.writeValueAsString(productRequest);
+        mockMvc.perform(MockMvcRequestBuilders.post("/api/product/")
+                .contentType(MediaType.Application_JSON))
+                .content(productRequestString))
+                .andExpect(status().isCreated());
+         Assertions.assertEquals(1,productRepository.findAll().size());
+        }
+        
+        private ProductRequest getProductRequest(){
+          return ProductRequest.builder()
+                               .name("phone")
+                               .describe("series 12")
+                               .price(BigDecimal.valueOf(1200))
+                               .build();
+                   }
+       }
+
+  
+      b.Write Testcase for getAllProducts():
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                    
+
+
+
+                                                  OrderService   
+                                                 ----------------
+1.Depedency - Lombok,Web,Spring Data JPA,MySql DRIVER.
+2.Create Entity,Controller,Repoitory,Service,Dto.           @OneToMany(cascade=CascadeType.ALL) 
+3.Order - @Id, @Generated Long id, String orderNumber,List< OrderLineItems > orderLineItems.
+4.create class @Entity OrderLineItems {@Id @Generated Long id,String skuCode, BigDecimal price, Integer Quantity}
+5.Controller - postmapping (placeOrder(OrderRequest orderRequest)),
+6. Create OrderRequest class{ List<OrderLineItemsDto> orderLineItemsDtoList } 
+7. Create class OrderLineItemsDto.
+8. In Service - On Service class add @Transactional
+
+
+                  placeOrder(OrderRequest orderRequest){
+ random OrderId --> Order order=new Order();
+                   order.setOrderNumber(UUID.randomUUID().toString());
+                   orderRequest.getOrderLineItemsDtoList()
+                               .stream()
+                               .map(orderLineItemsDto->mapToDto(orderLineItemDto orderLineItemsDto))
+                               .toList();
+                     order.setOrderLineItemsList(orderLineItems);
+                     orderRepository.save(order);
+                              }  
+                   private OrderLineItems mapToDto(OrderLineItemsDto orderLineItemsDto){
+               OrderLineItems orderLineItems=new OrderLineItems();
+                 orderLineItems.setPrice(orderLineItemsDto.getPrice())
+                 orderLineItems.setQuantity();
+                                .setSku();
+                   return orderLineItems;
+
+               }                  
+
+              }
+
+9.Create Repository Class.
+
+10.Configure Application.properties.   server.port=8081
+
+11.Postman :  
+ 
+        {
+        "orderLineItemsDtoList":[
+
+         {
+          "skucode":"iphone",
+          "price":120000,
+          "quantity":1
+         }
+        ]
+        }
+
+ --------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                  Inventory Service
+                                                ---------------------
+ 1.Depedency - Lombok,Web,Spring Data JPA,MySql DRIVER.
+ 2.Application.prop ---> server.port=8082
+ 3.create class Inventory -> id,skuCode,quantity(No of Items in Stock).
+ 4.create Repository class and Service Class.
+ 5.create Controller Class --> 
+                          
+                          @GetMapping("/{sku-Code}")
+                          public ResponseEntity<boolean> isInStock(@PathVariable("sku-Code") String skuCode){
+
+
+
+
+                          }
+
+6.In Service Class :
+                           @Transactional(readOnly =true)
+                         public boolean isInStock(String skuCode){
+                          return inventoryRepo.findBySkuCode(skuCode).isPresent();
+                         }
+
+
+7.Inserting data into Inventory.
+
+    In Main method class  --->
+
+                  main(String[] args){
+                  public CommandLineRunner loadData(InventoryRepository inventoryRepository)
+
+                          {
+
+                         return args-> {
+
+                                  Inventory inventory1=new Inventory();
+                                  inventory.setSkuCode("iphone");
+                                  inventory.setQuantity(100);
+                                 
+
+                                   Inventory inventory2=new Inventory();
+                                  inventory.setSkuCode("iphone");
+                                  inventory.setQuantity(100); 
+
+                                   inventoryRepo.saveAll(inventory1,inventory2);
+     
+                            } }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
